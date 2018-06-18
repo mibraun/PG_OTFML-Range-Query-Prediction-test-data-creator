@@ -7,6 +7,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import normalize
 from sklearn.model_selection import GridSearchCV
 
+
 # Samples uniformly from all intervals on [0,1)
 def interval_sample_uniform(num_features):
     feature_intervals = []
@@ -65,21 +66,50 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
     # by optimizing on random intervals on synthetic ground truth
     data_test = []
     num_features = X_RQP_train.shape[1]
-    #for i in range(num_test_data_points):
-    if sampling_method == "length_uniform":
-        feature_intervals = interval_sample_length(num_features)
-    else:
-        feature_intervals = interval_sample_uniform(num_features)
-    initial_guess = []
-    for feature_interval in feature_intervals:
-        initial_guess.append(np.mean([feature_interval[0], feature_interval[1]]))
+    for i in range(num_test_data_points):
+        if sampling_method == "length_uniform":
+            feature_intervals = interval_sample_length(num_features)
+        else:
+            feature_intervals = interval_sample_uniform(num_features)
+        initial_guess = []
+        for feature_interval in feature_intervals:
+            initial_guess.append(np.mean([feature_interval[0], feature_interval[1]]))
 
-    y_min = optimize.minimize(lambda x: synth_ground_truth.predict(x.reshape(1, -1)),
-                              x0=initial_guess, bounds=feature_intervals)
-    print(feature_intervals)
-    print("Success: ", y_min.success, " min: ", synth_ground_truth.predict(y_min.x.reshape(1, -1)))
+        y_min = optimize.minimize(lambda x: synth_ground_truth.predict(x.reshape(1, -1)),
+                                  x0=initial_guess, bounds=feature_intervals)
+        y_max = optimize.minimize(lambda x: (-1) * synth_ground_truth.predict(x.reshape(1, -1)),
+                                  x0=initial_guess, bounds=feature_intervals)
+        #print(feature_intervals)
+        #print("Success: ", y_min.success, " min: ", synth_ground_truth.predict(y_min.x.reshape(1, -1)),
+        #      "max: ", synth_ground_truth.predict(y_max.x.reshape(1, -1)))
+        data_test.append(feature_intervals)
 
-    return pd.DataFrame(data_train), pd.DataFrame(data_test), synth_ground_truth
+    # unpack intervals for test data and append computed min and max
+    data_test_unpacked = []
+    for data in data_test:
+        feature_intervals_unpacked = []
+        for feature in data:
+            feature_intervals_unpacked.append(feature[0])
+            feature_intervals_unpacked.append(feature[1])
+        feature_intervals_unpacked.append(synth_ground_truth.predict(y_min.x.reshape(1, -1)))
+        feature_intervals_unpacked.append(synth_ground_truth.predict(y_max.x.reshape(1, -1)))
+        data_test_unpacked.append(feature_intervals_unpacked)
+
+    # Put all data in panda data frames with nicely named columns
+    data_train_df = pd.DataFrame(data_train)
+    data_test_df = pd.DataFrame(data_test_unpacked)
+    column_names_train = {}
+    column_names_test = {}
+    for feature in range(num_features):
+        column_names_train[feature] = 'x' + str(feature)
+        column_names_test[feature * 2] = 'x' + str(feature) + '_lower'
+        column_names_test[feature * 2 + 1] = 'x' + str(feature) + '_upper'
+    column_names_train[num_features] = 'y'
+    column_names_test[num_features * 2] = 'y_min'
+    column_names_test[num_features * 2 + 1] = 'y_max'
+    data_train_df.rename(columns=column_names_train, inplace=True)
+    data_test_df.rename(columns=column_names_test, inplace=True)
+    return data_train_df, data_test_df, synth_ground_truth
 
 
 if __name__ == "__main__":
