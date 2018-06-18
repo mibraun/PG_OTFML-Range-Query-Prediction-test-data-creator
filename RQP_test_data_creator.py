@@ -49,18 +49,15 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
     # MLP regressor with alpha-parameter and hidden layer sizes determined by grid search cross validation
     mlp_param_grid = {'alpha': 10.0 ** -np.arange(1, 3),
-                      'hidden_layer_sizes': [(i, j) for i in range(10, 21) for j in range(10, 21)]}
+                      'hidden_layer_sizes': [(i, j) for i in range(20, 21, 1) for j in range(20, 21, 1)]}
     synth_ground_truth = GridSearchCV(MLPRegressor(), mlp_param_grid)
-
     synth_ground_truth.fit(X_gt_train, Y_gt_train)
+    print("CV score:", synth_ground_truth.best_score_)
 
     # Original X data with synthetic ground truth Y-values as training data for RQP
     X_RQP_train = X_norm
     Y_RQP_train = np.reshape(synth_ground_truth.predict(X_RQP_train), (N, 1))
     data_train = np.concatenate([X_RQP_train, Y_RQP_train], axis=1)
-    #pandas2arff(pd.DataFrame(data_train), "cpu.small_RQP_train.arff", wekaname="test")
-
-    print("CV score:", synth_ground_truth.best_score_)
 
     # Generate interval-valued test data points for RQP
     # by optimizing on random intervals on synthetic ground truth
@@ -79,9 +76,6 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
                                   x0=initial_guess, bounds=feature_intervals)
         y_max = optimize.minimize(lambda x: (-1) * synth_ground_truth.predict(x.reshape(1, -1)),
                                   x0=initial_guess, bounds=feature_intervals)
-        #print(feature_intervals)
-        #print("Success: ", y_min.success, " min: ", synth_ground_truth.predict(y_min.x.reshape(1, -1)),
-        #      "max: ", synth_ground_truth.predict(y_max.x.reshape(1, -1)))
         data_test.append(feature_intervals)
 
     # unpack intervals for test data and append computed min and max
@@ -91,8 +85,8 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
         for feature in data:
             feature_intervals_unpacked.append(feature[0])
             feature_intervals_unpacked.append(feature[1])
-        feature_intervals_unpacked.append(synth_ground_truth.predict(y_min.x.reshape(1, -1)))
-        feature_intervals_unpacked.append(synth_ground_truth.predict(y_max.x.reshape(1, -1)))
+        feature_intervals_unpacked.append(synth_ground_truth.predict(y_min.x.reshape(1, -1))[0])
+        feature_intervals_unpacked.append(synth_ground_truth.predict(y_max.x.reshape(1, -1))[0])
         data_test_unpacked.append(feature_intervals_unpacked)
 
     # Put all data in panda data frames with nicely named columns
@@ -109,8 +103,14 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
     column_names_test[num_features * 2 + 1] = 'y_max'
     data_train_df.rename(columns=column_names_train, inplace=True)
     data_test_df.rename(columns=column_names_test, inplace=True)
+
     return data_train_df, data_test_df, synth_ground_truth
 
 
 if __name__ == "__main__":
-    create_test_data("regression/cpu.small.arff")
+    file_path = "regression/cpu.small.arff"
+    data_train_df, data_test_df, synth_ground_truth = create_test_data("regression/cpu.small.arff")
+    pandas2arff(data_test_df, file_path + "_RQPtest.arff", wekaname=file_path + "_RQP test data")
+    pandas2arff(data_train_df, file_path + "_RQPtrain.arff", wekaname=file_path + "_RQP training data")
+    #with open(file_path + "_RQP_sgt", 'w') as sgt_file:
+    #    sgt_file.write(str(synth_ground_truth))
