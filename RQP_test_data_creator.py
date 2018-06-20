@@ -41,7 +41,7 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
     raw_data = pd.DataFrame(arff.loadarff(file_path)[0])
     X = raw_data.iloc[:, :-1]
     Y = raw_data.iloc[:, -1:]
-    X_norm = normalize(X, axis=0)
+    X_norm = util.FittingNormalizer().fit_transform(X)
     N = raw_data.shape[0]
     if num_test_data_points == None:
         num_test_data_points = N
