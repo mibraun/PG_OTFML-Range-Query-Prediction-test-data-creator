@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 import util
+import pickle
 from pandas2arff import pandas2arff
 from scipy.io import arff
 from scipy import optimize
 from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import normalize
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
@@ -51,10 +51,14 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
     # MLP regressor with alpha-parameter and hidden layer sizes determined by grid search cross validation
     param_grid = {'classify__alpha': 10.0 ** -np.arange(1, 7),
-                      'classify__hidden_layer_sizes': [(i, j, 20, 20) for i in range(20, 21, 1) for j in range(20, 21, 1)]}
+                      'classify__hidden_layer_sizes': [(layer1, layer2, layer3, layer4)
+                                                       for layer1 in range(10, 21, 5)
+                                                       for layer2 in range(10, 21, 1)
+                                                       for layer3 in range(10, 21, 5)
+                                                       for layer4 in range(10, 21, 5)]}
 
     synth_ground_truth_pipe = Pipeline([('normalize', util.FittingNormalizer()), ('classify', MLPRegressor())])
-    synth_ground_truth = GridSearchCV(synth_ground_truth_pipe, param_grid)
+    synth_ground_truth = GridSearchCV(synth_ground_truth_pipe, param_grid, n_jobs=3)
     synth_ground_truth.fit(X_gt_train, Y_gt_train)
     print("CV score:", synth_ground_truth.best_score_)
 
@@ -68,20 +72,36 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
     data_test = []
     num_features = X_RQP_train.shape[1]
     for i in range(num_test_data_points):
+        NUM_RANDOM_RESTARTS = 10
         if sampling_method == "length_uniform":
             feature_intervals = interval_sample_length(num_features)
         else:
             feature_intervals = interval_sample_uniform(num_features)
-        initial_guess = []
+        # Restarts for blackbox optimization: middle of intervals plus 10 randomly chosen restarts
+        initial_guesses = []
+        mid_guess = []
         for feature_interval in feature_intervals:
-            initial_guess.append(np.mean([feature_interval[0], feature_interval[1]]))
-
-        y_min = optimize.minimize(lambda x: synth_ground_truth.predict(x.reshape(1, -1)),
+            mid_guess.append(np.mean([feature_interval[0], feature_interval[1]]))
+        initial_guesses.append(mid_guess)
+        for j in range(NUM_RANDOM_RESTARTS):
+            rand_guess = []
+            for feature_interval in feature_intervals:
+                rand_feature_value = (feature_interval[1] - feature_interval[0]) \
+                                     * np.random.random_sample() + feature_interval[0]
+                rand_guess.append(rand_feature_value)
+            initial_guesses.append(rand_guess)
+        y_mins = []
+        y_maxs = []
+        for initial_guess in initial_guesses:
+            y_min_result = optimize.minimize(lambda x: synth_ground_truth.predict(x.reshape(1, -1)),
                                   x0=initial_guess, bounds=feature_intervals)
-        y_max = optimize.minimize(lambda x: (-1) * synth_ground_truth.predict(x.reshape(1, -1)),
+            y_max_result = optimize.minimize(lambda x: (-1) * synth_ground_truth.predict(x.reshape(1, -1)),
                                   x0=initial_guess, bounds=feature_intervals)
-        feature_intervals.append((synth_ground_truth.predict(y_min.x.reshape(1, -1))[0],
-                                  synth_ground_truth.predict(y_max.x.reshape(1, -1))[0]))
+            y_mins.append(synth_ground_truth.predict(y_min_result.x.reshape(1, -1))[0])
+            y_maxs.append(synth_ground_truth.predict(y_max_result.x.reshape(1, -1))[0])
+        y_min = np.min(y_mins)
+        y_max = np.max(y_maxs)
+        feature_intervals.append((y_min, y_max))
         data_test.append(feature_intervals)
 
     # unpack intervals for test data
@@ -112,9 +132,14 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
 
 if __name__ == "__main__":
-    file_path = "regression/cpu.small.arff"
-    data_train_df, data_test_df, sgt_model = create_test_data("regression/cpu.small.arff")
-    pandas2arff(data_test_df, file_path + "_RQPtest.arff", wekaname=file_path + "_RQP test data")
-    pandas2arff(data_train_df, file_path + "_RQPtrain.arff", wekaname=file_path + "_RQP training data")
-    #with open(file_path + "_RQP_sgt", 'w') as sgt_file:
-    #    sgt_file.write(str(sgt_model))
+    file_paths = ["regression/boston.argg", "regression/cpu.small.arff", "regression/machine.cpu.arff",
+                  "regression/places_mod.arff", "regression/stock.arff"]
+    for file_path in file_paths:
+        try:
+            data_train_df, data_test_df, sgt_model = create_test_data(file_path)
+            pandas2arff(data_test_df, file_path + "_RQPtest.arff", wekaname=file_path + "_RQP_test_data")
+            pandas2arff(data_train_df, file_path + "_RQPtrain.arff", wekaname=file_path + "_RQP_training_data")
+            with open(file_path + "_RQP_sgt_pickle", 'wb') as sgt_file:
+                pickle.dump(sgt_model, sgt_file)
+        except:
+            pass
