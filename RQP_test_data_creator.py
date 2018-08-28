@@ -144,7 +144,7 @@ def train_neural_network(X_gt_train, Y_gt_train):
 
 
 def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_data_points, categoric_features,
-                    data_train, sampling_method, sigma):
+                     sampling_method):
     # Generate interval-valued test data points for RQP
     # by optimizing on random intervals on synthetic ground truth
     data_test = []
@@ -208,7 +208,6 @@ def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_
         data_test_unpacked.append(feature_intervals_unpacked)
 
     # Put all data in panda data frames with nicely named columns
-    data_train_df = pd.DataFrame(data_train)
     data_test_df = pd.DataFrame(data_test_unpacked)
     column_names_train = {}
     column_names_test = {}
@@ -219,23 +218,22 @@ def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_
     column_names_train[num_features] = 'y'
     column_names_test[num_features * 2] = 'y_min'
     column_names_test[num_features * 2 + 1] = 'y_max'
-    data_train_df.rename(columns=column_names_train, inplace=True)
     data_test_df.rename(columns=column_names_test, inplace=True)
-    return data_train_df, data_test_df
+    return data_test_df
 
 
-def write_to_file(data_train_df, data_test_df, noise, sampling_method, dataset_name):
+def write_to_file(data_train_dfs, data_test_df, noises, sampling_method, dataset_name):
     stripped_dataset_name = dataset_name.replace('.arff', '')
     stripped_dataset_name = stripped_dataset_name.replace('regression/', '')
     pandas2arff(data_test_df,
-                "data/" + dataset_name + "/" + sampling_method + "/" + stripped_dataset_name + "_noise_" + str(
-                    noise) + "_RQPtest.arff",
+                "data/" + dataset_name + "/" + sampling_method + "/" + stripped_dataset_name + "_RQPtest.arff",
                 wekaname=file_path + "_RQP_test_data")
-    pandas2arff(data_train_df,
-                "data/" + dataset_name + "/" + sampling_method + "/" + stripped_dataset_name + "_noise_" + str(
-                    noise) + "_RQPtrain.arff",
-                wekaname=file_path + "_RQP_training_data")
 
+    for i in range(len(noises)):
+        pandas2arff(data_train_dfs[i],
+                    "data/" + dataset_name + "/" + sampling_method + "/" + stripped_dataset_name + "_noise_" + str(
+                        noises[i]) + "_RQPtrain.arff",
+                    wekaname=file_path + "_RQP_training_data")
 
 # Creates the test-data & training data based on the given
 def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric_features=[], num_test_data_points=None,
@@ -252,21 +250,31 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
     X_RQP_train = X_gt_train
     Y_RQP_train = np.reshape(synth_ground_truth.predict(X_RQP_train), (N, 1))
 
+    column_names_train = {}
+    num_features = X_RQP_train.shape[1]
+
+    for feature in range(num_features):
+        column_names_train[feature] = 'x' + str(feature)
+
     train_data = []
     for noise in noises:
-        for i in range(len(Y_RQP_train)):
-            Y_RQP_train[i] = Y_RQP_train[i] + np.random.normal(0, noise)
-    data_train = np.concatenate([X_RQP_train, Y_RQP_train], axis=1)
+        y_copy = np.copy(Y_RQP_train)
+        for i in range(len(y_copy)):
+            y_copy[i] = y_copy[i] + np.random.normal(0, noise)
+        data_train = np.concatenate([X_RQP_train, y_copy], axis=1)
+        data_train_df = pd.DataFrame(data_train)
+        data_train_df.rename(columns=column_names_train, inplace=True)
+        train_data.append(data_train_df)
 
-    for noise in noises:
-        data_train_df, data_test_df = create_rqp_data(X_RQP_train=X_RQP_train, data_train=data_train,
-                                                      numeric_features=numeric_features,
-                                                      categoric_features=categoric_features, sigma=noises,
-                                                      synth_ground_truth=synth_ground_truth,
-                                                      num_test_data_points=num_test_data_points,
-                                                      sampling_method=sampling_method)
 
-        write_to_file(data_train_df=data_train_df, data_test_df=data_test_df, dataset_name=dataset_name, noise=noise,
+    data_test_df = create_rqp_data(X_RQP_train=X_RQP_train,
+                                                  numeric_features=numeric_features,
+                                                  categoric_features=categoric_features,
+                                                  synth_ground_truth=synth_ground_truth,
+                                                  num_test_data_points=num_test_data_points,
+                                                  sampling_method=sampling_method)
+
+    write_to_file(data_train_dfs=train_data, data_test_df=data_test_df, dataset_name=dataset_name, noises=noises,
                       sampling_method=sampling_method)
 
 
@@ -285,7 +293,7 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
 if __name__ == "__main__":
     sampling_method = "length_exponential"
-    file_paths = ["regression/boston.arff","regression/bank32nh.arff", "regression/bank8FM.arff", "regression/bodyfat.arff", "regression/cpu.small.arff"
+    file_paths = ["regression/boston.arff","regression/bank32nh.arff", "regression/bank8FM.arff", "regression/bodyfat.arff", "regression/cpu.small.arff", "regression/cal.housing.arff", "regression/elevators.arff", "regression/house8L.arff", "regression/kin8nm.arff", "regression/machine.cpu.arff"
                   ]
     for file_path in file_paths:
         try:
