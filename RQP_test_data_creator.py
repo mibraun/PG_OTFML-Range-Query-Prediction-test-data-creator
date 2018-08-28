@@ -114,25 +114,25 @@ def interval_sample_random_points(numeric_features, categoric_features, X):
 
 def stadardize_data(categoric_features, X, Y, numeric_features):
     print("Standardizing...")
+    standardized_y = StandardScaler().fit_transform(Y)
 
     # We don't want to standardize the categorical data
     if len(categoric_features) is 0:
         X_norm = StandardScaler().fit_transform(X)
     else:
         X_norm = CustomScaler(bin_vars_index=categoric_features, cont_vars_index=numeric_features).fit_transform(X)
-    return X_norm, np.ravel(Y)
+    return X_norm, np.ravel(standardized_y)
 
 
 def train_neural_network(X_gt_train, Y_gt_train):
     print("Optimizing DNN...")
 
     # MLP regressor with alpha-parameter and hidden layer sizes determined by grid search cross validation
-    param_grid = {'classify__alpha': 10.0 ** -np.arange(1, 4),
-                  'classify__hidden_layer_sizes': [(layer1, layer2, layer3, layer4)
+    param_grid = {'classify__alpha': 10.0 ** -np.arange(1, 7),
+                  'classify__activation': ['logistic'],
+                  'classify__hidden_layer_sizes': [(layer1, layer2)
                                                    for layer1 in range(10, 28, 4)
-                                                   for layer2 in range(10, 28, 4)
-                                                   for layer3 in range(10, 28, 4)
-                                                   for layer4 in range(10, 28, 4)]}
+                                                   for layer2 in range(10, 28, 4)]}
 
     synth_ground_truth_pipe = Pipeline([('classify', MLPRegressor())])
     synth_ground_truth = GridSearchCV(synth_ground_truth_pipe, param_grid, n_jobs=1)
@@ -191,8 +191,8 @@ def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_
                                              x0=initial_guess, bounds=feature_intervals)
             y_max_result = optimize.minimize(lambda x: (-1) * synth_ground_truth.predict(x.reshape(1, -1)),
                                              x0=initial_guess, bounds=feature_intervals)
-            y_mins.append(synth_ground_truth.predict(y_min_result.x.reshape(1, -1))[0] + np.random.normal(0, sigma))
-            y_maxs.append(synth_ground_truth.predict(y_max_result.x.reshape(1, -1))[0] + np.random.normal(0, sigma))
+            y_mins.append(synth_ground_truth.predict(y_min_result.x.reshape(1, -1))[0])
+            y_maxs.append(synth_ground_truth.predict(y_max_result.x.reshape(1, -1))[0])
         y_min = np.min(y_mins)
         y_max = np.max(y_maxs)
         feature_intervals.append((y_min, y_max))
@@ -251,11 +251,12 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
     # Original X data with synthetic ground truth Y-values as training data for RQP
     X_RQP_train = X_gt_train
     Y_RQP_train = np.reshape(synth_ground_truth.predict(X_RQP_train), (N, 1))
-    data_train = np.concatenate([X_RQP_train, Y_RQP_train], axis=1)
+    
+
     for noise in noises:
         data_train_df, data_test_df = create_rqp_data(X_RQP_train=X_RQP_train, data_train=data_train,
                                                       numeric_features=numeric_features,
-                                                      categoric_features=categoric_features, sigma=noise,
+                                                      categoric_features=categoric_features, sigma=noises,
                                                       synth_ground_truth=synth_ground_truth,
                                                       num_test_data_points=num_test_data_points,
                                                       sampling_method=sampling_method)
@@ -269,6 +270,9 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
     X = raw_data.iloc[:, :-1].get_values()
     Y = raw_data.iloc[:, -1:]
     N = raw_data.shape[0]
+    if num_test_data_points is None:
+        num_test_data_points = int(np.floor(0.3 * N))
+
     return create_test_data_internal(N=N, X=X, Y=Y, dataset_name=file_path, sampling_method=sampling_method,
                                      num_test_data_points=num_test_data_points, numeric_features=range(len(X[0])),
                                      categoric_features=[])
@@ -276,12 +280,12 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
 if __name__ == "__main__":
     sampling_method = "length_exponential"
-    file_paths = ["regression/bodyfat.arff","regression/pollution.arff"
+    file_paths = ["regression/boston.arff","regression/bank32nh.arff", "regression/bank8FM.arff", "regression/bodyfat.arff", "regression/cpu.small.arff"
                   ]
     for file_path in file_paths:
         try:
             os.makedirs("data/" + file_path + "/" + sampling_method, exist_ok=True)
-            create_test_data(file_path, sampling_method=sampling_method, num_test_data_points=150)
+            create_test_data(file_path, sampling_method=sampling_method)
         except RuntimeError as err:
             print(err)
             pass
