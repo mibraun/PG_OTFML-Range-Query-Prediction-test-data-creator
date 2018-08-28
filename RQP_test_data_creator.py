@@ -274,6 +274,33 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
                                      categoric_features=[])
 
 
+def read_data_from_arff(train_file, test_file):
+    """Reads training and test data for range query prediction from arff files
+    and returns them as five numpy arrays.
+
+    Arguments:
+        train_file -- file path of the training data. Should be in .arff format.
+        test_file -- file path of the test data. Should be in .arff format.
+
+    Returns:
+        X_train -- 2-dimensional numpy array containing the training data features
+        Y_train -- 1-dimensional numpy array containing the training data target
+        X_test -- 2-dimensional numpy array containing the range query test data features in the form
+                    x1_min, x1_max, x2_min, x2_max, ...
+        Y_test_min -- 1-dimensional numpy array containing the test data target minima
+        Y_test_max -- 1-dimensional numpy array containing the test data target maxima
+    """
+
+    raw_data_train = pd.DataFrame(arff.loadarff(train_file)[0])
+    raw_data_test = pd.DataFrame(arff.loadarff(test_file)[0])
+    X_train = raw_data_train.iloc[:, :-1].get_values()
+    Y_train = raw_data_train.iloc[:, -1:]
+    X_test = raw_data_test.iloc[:, :-2].get_values()
+    Y_test_min = raw_data_test.iloc[:, -2:-1]
+    Y_test_max = raw_data_test.iloc[:, -1:]
+    return X_train, np.ravel(Y_train), X_test, np.ravel(Y_test_min), np.ravel(Y_test_max)
+
+
 if __name__ == "__main__":
     sampling_method = "length_exponential"
     file_paths = ["regression/bodyfat.arff","regression/pollution.arff"
