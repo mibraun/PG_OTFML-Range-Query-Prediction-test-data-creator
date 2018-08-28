@@ -209,13 +209,10 @@ def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_
 
     # Put all data in panda data frames with nicely named columns
     data_test_df = pd.DataFrame(data_test_unpacked)
-    column_names_train = {}
     column_names_test = {}
     for feature in range(num_features):
-        column_names_train[feature] = 'x' + str(feature)
         column_names_test[feature * 2] = 'x' + str(feature) + '_lower'
         column_names_test[feature * 2 + 1] = 'x' + str(feature) + '_upper'
-    column_names_train[num_features] = 'y'
     column_names_test[num_features * 2] = 'y_min'
     column_names_test[num_features * 2 + 1] = 'y_max'
     data_test_df.rename(columns=column_names_test, inplace=True)
@@ -255,6 +252,7 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
 
     for feature in range(num_features):
         column_names_train[feature] = 'x' + str(feature)
+    column_names_train[num_features] = 'y'
 
     train_data = []
     for noise in noises:
@@ -265,7 +263,6 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
         data_train_df = pd.DataFrame(data_train)
         data_train_df.rename(columns=column_names_train, inplace=True)
         train_data.append(data_train_df)
-
 
     data_test_df = create_rqp_data(X_RQP_train=X_RQP_train,
                                                   numeric_features=numeric_features,
