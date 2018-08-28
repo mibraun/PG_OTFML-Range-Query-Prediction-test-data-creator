@@ -251,7 +251,12 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
     # Original X data with synthetic ground truth Y-values as training data for RQP
     X_RQP_train = X_gt_train
     Y_RQP_train = np.reshape(synth_ground_truth.predict(X_RQP_train), (N, 1))
-    
+
+    train_data = []
+    for noise in noises:
+        for i in range(len(Y_RQP_train)):
+            Y_RQP_train[i] = Y_RQP_train[i] + np.random.normal(0, noise)
+    data_train = np.concatenate([X_RQP_train, Y_RQP_train], axis=1)
 
     for noise in noises:
         data_train_df, data_test_df = create_rqp_data(X_RQP_train=X_RQP_train, data_train=data_train,
