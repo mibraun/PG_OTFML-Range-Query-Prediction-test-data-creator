@@ -33,7 +33,6 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
                                      categoric_features=[])
 
 
-
 # Creates the test-data & training data based on the given
 def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric_features=[], num_test_data_points=None,
                               sampling_method="random_points", noises=[0.1, 0.01, 0.001]):
@@ -41,7 +40,7 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
         num_test_data_points = N
 
     X_gt_train, Y_gt_train = standardize_data(categoric_features=categoric_features, X=X, Y=Y,
-                                             numeric_features=numeric_features)
+                                              numeric_features=numeric_features)
 
     synth_ground_truth = train_neural_network(X_gt_train=X_gt_train, Y_gt_train=Y_gt_train)
 
@@ -50,10 +49,12 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
     Y_RQP_train = np.reshape(synth_ground_truth.predict(X_RQP_train), (N, 1))
 
     column_names_train = {}
+
     num_features = X_RQP_train.shape[1]
 
     for feature in range(num_features):
         column_names_train[feature] = 'x' + str(feature)
+    column_names_train[num_features] = 'y'
 
     train_data = []
     for noise in noises:
@@ -65,16 +66,15 @@ def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric
         data_train_df.rename(columns=column_names_train, inplace=True)
         train_data.append(data_train_df)
 
-
     data_test_df = create_rqp_data(X_RQP_train=X_RQP_train,
-                                                  numeric_features=numeric_features,
-                                                  categoric_features=categoric_features,
-                                                  synth_ground_truth=synth_ground_truth,
-                                                  num_test_data_points=num_test_data_points,
-                                                  sampling_method=sampling_method)
+                                   numeric_features=numeric_features,
+                                   categoric_features=categoric_features,
+                                   synth_ground_truth=synth_ground_truth,
+                                   num_test_data_points=num_test_data_points,
+                                   sampling_method=sampling_method)
 
     write_to_file(data_train_dfs=train_data, data_test_df=data_test_df, dataset_name=dataset_name, noises=noises,
-                      sampling_method=sampling_method)
+                  sampling_method=sampling_method)
 
 
 def standardize_data(categoric_features, X, Y, numeric_features):
@@ -109,7 +109,7 @@ def train_neural_network(X_gt_train, Y_gt_train):
 
 
 def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_data_points, categoric_features,
-                     sampling_method):
+                    sampling_method):
     # Generate interval-valued test data points for RQP
     # by optimizing on random intervals on synthetic ground truth
     data_test = []
@@ -176,13 +176,10 @@ def create_rqp_data(X_RQP_train, synth_ground_truth, numeric_features, num_test_
 
     # Put all data in panda data frames with nicely named columns
     data_test_df = pd.DataFrame(data_test_unpacked)
-    column_names_train = {}
     column_names_test = {}
     for feature in range(num_features):
-        column_names_train[feature] = 'x' + str(feature)
         column_names_test[feature * 2] = 'x' + str(feature) + '_lower'
         column_names_test[feature * 2 + 1] = 'x' + str(feature) + '_upper'
-    column_names_train[num_features] = 'y'
     column_names_test[num_features * 2] = 'y_min'
     column_names_test[num_features * 2 + 1] = 'y_max'
     data_test_df.rename(columns=column_names_test, inplace=True)
@@ -205,6 +202,7 @@ def interval_sample_uniform(num_features, ignore=None):
 
     return feature_intervals
 
+
 def interval_sample_random_features(X):
     feature_intervals = []
     for feature in range(X.shape[1]):
@@ -212,7 +210,6 @@ def interval_sample_random_features(X):
         random_samples = np.random.choice(size=2, a=feature_column)
         feature_intervals.append((np.min(random_samples), np.max(random_samples)))
     return feature_intervals
-
 
 
 def interval_sample_length_exponential(numeric_min, numeric_max, categoric_features):
@@ -304,10 +301,39 @@ def write_to_file(data_train_dfs, data_test_df, noises, sampling_method, dataset
                     wekaname=file_path + "_RQP_training_data")
 
 
+def read_data_from_arff(train_file, test_file):
+    """Reads training and test data for range query prediction from arff files
+    and returns them as five numpy arrays.
+
+    Arguments:
+        train_file -- file path of the training data. Should be in .arff format.
+        test_file -- file path of the test data. Should be in .arff format.
+
+    Returns:
+        X_train -- 2-dimensional numpy array containing the training data features
+        Y_train -- 1-dimensional numpy array containing the training data target
+        X_test -- 2-dimensional numpy array containing the range query test data features in the form
+                    x1_min, x1_max, x2_min, x2_max, ...
+        Y_test_min -- 1-dimensional numpy array containing the test data target minima
+        Y_test_max -- 1-dimensional numpy array containing the test data target maxima
+    """
+
+    raw_data_train = pd.DataFrame(arff.loadarff(train_file)[0])
+    raw_data_test = pd.DataFrame(arff.loadarff(test_file)[0])
+    X_train = raw_data_train.iloc[:, :-1].get_values()
+    Y_train = raw_data_train.iloc[:, -1:]
+    X_test = raw_data_test.iloc[:, :-2].get_values()
+    Y_test_min = raw_data_test.iloc[:, -2:-1]
+    Y_test_max = raw_data_test.iloc[:, -1:]
+    return X_train, np.ravel(Y_train), X_test, np.ravel(Y_test_min), np.ravel(Y_test_max)
+
 
 if __name__ == "__main__":
     sampling_method = "random_features"
-    file_paths = ["regression/boston.arff","regression/bank32nh.arff", "regression/bank8FM.arff", "regression/bodyfat.arff", "regression/cpu.small.arff", "regression/cal.housing.arff", "regression/elevators.arff", "regression/house8L.arff", "regression/kin8nm.arff", "regression/machine.cpu.arff"
+    file_paths = ["regression/boston.arff", "regression/bank32nh.arff", "regression/bank8FM.arff",
+                  "regression/bodyfat.arff", "regression/cpu.small.arff", "regression/cal.housing.arff",
+                  "regression/elevators.arff", "regression/house8L.arff", "regression/kin8nm.arff",
+                  "regression/machine.cpu.arff"
                   ]
     for file_path in file_paths:
         try:
