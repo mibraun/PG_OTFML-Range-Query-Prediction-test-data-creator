@@ -35,7 +35,7 @@ def create_test_data(file_path, sampling_method="uniform", num_test_data_points=
 
 # Creates the test-data & training data based on the given
 def create_test_data_internal(X, Y, N, numeric_features, dataset_name, categoric_features=[], num_test_data_points=None,
-                              sampling_method="random_points", noises=[0.1, 0.01, 0.001]):
+                              sampling_method="random_points", noises=[0, 0.1, 0.3, 0.5]):
     if num_test_data_points is None:
         num_test_data_points = N
 
@@ -207,8 +207,9 @@ def interval_sample_random_features(X):
     feature_intervals = []
     for feature in range(X.shape[1]):
         feature_column = X[:, feature]
-        random_samples = np.random.choice(size=2, a=feature_column)
-        feature_intervals.append((np.min(random_samples), np.max(random_samples)))
+        random_sample_one = np.random.choice(a=feature_column)
+        random_sample_two = np.random.choice(a=feature_column)
+        feature_intervals.append((np.min([random_sample_one, random_sample_two]), np.max([random_sample_one, random_sample_two])))
     return feature_intervals
 
 
